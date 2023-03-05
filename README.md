@@ -1,5 +1,7 @@
 # SANET
 
+新增批量操作功能
+
 This is unofficial PyTorch implementation of "Arbitrary Style Transfer with Style-Attentional Networks".
 
 Official paper: https://arxiv.org/abs/1812.02342v5
