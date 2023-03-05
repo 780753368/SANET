@@ -7,6 +7,9 @@ from os.path import basename
 from os.path import splitext
 from torchvision import transforms
 from torchvision.utils import save_image
+import torchvision.datasets as datasets
+
+from Loader import Dataset
 
 def calc_mean_std(feat, eps=1e-5):
     # eps is a small value added to the variance to avoid divide-by-zero.
@@ -161,9 +164,9 @@ def test_transform():
 parser = argparse.ArgumentParser()
 
 # Basic options
-parser.add_argument('--content', type=str, default = 'input/chicago.jpg',
+parser.add_argument('--content', type=str, default = 'input',
                     help='File path to the content image')
-parser.add_argument('--style', type=str, default = 'style/style11.jpg',
+parser.add_argument('--style', type=str, default = 'style',
                     help='File path to the style image, or multiple style \
                     images separated by commas if you want to do style \
                     interpolation or spatial control')
@@ -177,12 +180,15 @@ parser.add_argument('--save_ext', default = '.jpg',
                     help='The extension name of the output image')
 parser.add_argument('--output', type=str, default = 'output',
                     help='Directory to save the output image(s)')
+parser.add_argument('--fineSize', type=int, default=512,
+                    help='resize image to fineSize x fineSize,leave it to 0 if not resize')
 
 # Advanced options
 
 args = parser.parse_args('')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 if not os.path.exists(args.output):
     os.mkdir(args.output)
@@ -218,32 +224,37 @@ decoder.to(device)
 content_tf = test_transform()
 style_tf = test_transform()
 
-content = content_tf(Image.open(args.content))
-style = style_tf(Image.open(args.style))
+content_dataset = Dataset(args.content, args.fineSize)
+content_loader = torch.utils.data.DataLoader(dataset=content_dataset, batch_size=1, shuffle=False)
 
-style = style.to(device).unsqueeze(0)
-content = content.to(device).unsqueeze(0)
+style_dataset = Dataset(args.style, args.fineSize)
+style_loader = torch.utils.data.DataLoader(dataset=style_dataset, batch_size=1, shuffle=False)
 
-with torch.no_grad():
+for i, (content_img, content_name) in enumerate(content_loader):
+    for j, (style_img, style_name) in enumerate(style_loader):
+        content = content_img.to(device)
+        style = style_img.to(device)
 
-    for x in range(args.steps):
+        with torch.no_grad():
 
-        print('iteration ' + str(x))
-        
-        Content4_1 = enc_4(enc_3(enc_2(enc_1(content))))
-        Content5_1 = enc_5(Content4_1)
-    
-        Style4_1 = enc_4(enc_3(enc_2(enc_1(style))))
-        Style5_1 = enc_5(Style4_1)
-    
-        content = decoder(transform(Content4_1, Style4_1, Content5_1, Style5_1))
+            for x in range(args.steps):
 
-        content.clamp(0, 255)
+                print(''.join(content_name) + ' transferring to ' + ''.join(style_name))
 
-    content = content.cpu()
-    
-    output_name = '{:s}/{:s}_stylized_{:s}{:s}'.format(
-                args.output, splitext(basename(args.content))[0],
-                splitext(basename(args.style))[0], args.save_ext
-            )
-    save_image(content, output_name)
+                Content4_1 = enc_4(enc_3(enc_2(enc_1(content))))
+                Content5_1 = enc_5(Content4_1)
+
+                Style4_1 = enc_4(enc_3(enc_2(enc_1(style))))
+                Style5_1 = enc_5(Style4_1)
+
+                content = decoder(transform(Content4_1, Style4_1, Content5_1, Style5_1))
+
+                content.clamp(0, 255)
+
+            content = content.cpu()
+
+            output_name = '{:s}/{:s}_stylized_{:s}{:s}'.format(
+                        args.output, ''.join(content_name),
+                        ''.join(style_name), args.save_ext
+                    )
+            save_image(content, output_name)
